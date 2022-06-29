@@ -1,4 +1,4 @@
-# Pixhawk SIL connector for Simulink
+# Pixhawk SIL Connector for Simulink
 
 Simulink C++ S-function for software-in-the-loop simulation with Pixhawk.
 
@@ -34,7 +34,13 @@ Use instructions
 - Download and install QGroundControl  [https://docs.qgroundcontrol.com/master/en/getting_started/download_and_install.html](https://docs.qgroundcontrol.com/master/en/getting_started/download_and_install.html).
 - Create a new "Comm Link" in QGroundControl via the "Application Settings" page. The type of the link must be UDP, the port 18570, and the server address 127.0.0.1.
 - Open and run "pixhawk_sil_connector_example.slx".
-- Build the PX4-Autopilot source code using the following command:  <pre>make px4_sitl none_plane</pre>  [https://docs.px4.io/master/en/dev_setup/building_px4.html](https://docs.px4.io/master/en/dev_setup/building_px4.html).
+- Build the PX4-Autopilot source code using the following commands:  <pre>
+export PX4_SIM_HOST_ADDR=192.168.1.11
+export PX4_HOME_LAT=42.841448
+export PX4_HOME_LON=24.770727
+export PX4_HOME_ALT=0.5
+export PX4_ID=0
+make px4_sitl none_plane</pre>  [https://docs.px4.io/master/en/dev_setup/building_px4.html](https://docs.px4.io/master/en/dev_setup/building_px4.html).
 
 [![Example use of the Pixhawk SIL connector](https://i.ytimg.com/vi/b7P1-UgXS7Q/maxresdefault.jpg)](https://youtu.be/b7P1-UgXS7Q)
 
