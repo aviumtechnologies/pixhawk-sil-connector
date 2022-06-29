@@ -2,7 +2,7 @@
 
 Simulink C++ S-function for software-in-the-loop simulation with Pixhawk.
 
-[![View pixhawk-sitl-connector on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)]()
+[![View Pixhawk software-in-the-loop (SIL) connector for Simulink on File Exchange](https://www.mathworks.com/matlabcentral/images/matlab-file-exchange.svg)](https://uk.mathworks.com/matlabcentral/fileexchange/114320-pixhawk-software-in-the-loop-sil-connector-for-simulink)
 
 Requirements
 - MATLAB & Simulink (MATLAB R2022a or earlier)
