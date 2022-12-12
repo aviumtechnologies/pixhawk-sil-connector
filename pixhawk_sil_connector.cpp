@@ -13,11 +13,15 @@
 #include <string>
 
 #include <asio.hpp>
-#include "mavlink/ardupilotmega/mavlink.h"
+#include "mavlink/common/mavlink.h"
 
 #define S_FUNCTION_LEVEL 2
-// #define S_FUNCTION_DEBUG
 #define S_FUNCTION_NAME pixhawk_sil_connector
+
+static asio::io_service io_service;
+static asio::ip::tcp::socket sock(io_service);
+static std::string eStatus;
+static mavlink_hil_actuator_controls_t hil_actuator_controls_msg;
 
 /*
  * Need to include simstruc.h for the definition of the SimStruct and
@@ -54,7 +58,7 @@ static void mdlInitializeSizes(SimStruct *S)
     ssSetInputPortDirectFeedThrough(S, 1, 1);
     ssSetInputPortWidth(S, 2, 3); // omega_b_measured (rad/s)
     ssSetInputPortDirectFeedThrough(S, 2, 1);
-    ssSetInputPortWidth(S, 3, 3); // B_measured (gauss) 
+    ssSetInputPortWidth(S, 3, 3); // B_measured (gauss)
     ssSetInputPortDirectFeedThrough(S, 3, 1);
     ssSetInputPortWidth(S, 4, 1); // P_measured (hPa)
     ssSetInputPortDirectFeedThrough(S, 4, 1);
@@ -66,7 +70,7 @@ static void mdlInitializeSizes(SimStruct *S)
     ssSetInputPortDirectFeedThrough(S, 7, 1);
     ssSetInputPortWidth(S, 8, 12); // xyz_measured (-)
     ssSetInputPortDirectFeedThrough(S, 8, 1);
-    ssSetInputPortWidth(S, 9, 20); // rc_channels (-)
+    ssSetInputPortWidth(S, 9, 13); // rc_channels (-)
     ssSetInputPortDirectFeedThrough(S, 9, 1);
     ssSetInputPortWidth(S, 10, 17); // ground_truth (-)
     ssSetInputPortDirectFeedThrough(S, 10, 1);
@@ -96,7 +100,7 @@ static void mdlInitializeSizes(SimStruct *S)
  */
 static void mdlInitializeSampleTimes(SimStruct *S)
 {
-    ssSetSampleTime(S, 0, INHERITED_SAMPLE_TIME);
+    ssSetSampleTime(S, 0, 0.005);
     ssSetOffsetTime(S, 0, 0.0);
     ssSetModelReferenceSampleTimeDefaultInheritance(S);
 }
@@ -113,31 +117,26 @@ static void mdlStart(SimStruct *S)
 {
     try
     {
-        void **PWork = ssGetPWork(S);
 
-#ifndef S_FUNCTION_DEBUG
-
-        static asio::io_service io_service;
         asio::ip::tcp::endpoint endpoint(asio::ip::address::from_string("0.0.0.0"), 4560);
         asio::ip::tcp::acceptor acceptor(io_service, endpoint);
-        static asio::ip::tcp::socket socket(io_service);
 
-        static double pwm[16];
-        for (unsigned int i = 0; i < 16; i++)
-        {
-            pwm[i] = 0.0;
-        }
-        PWork[0] = &socket;
-        PWork[1] = &pwm;
+        mexPrintf("Waiting for PX4 to connect on TCP port 4560...\n");
 
-        acceptor.accept(socket);
-#endif
+        acceptor.accept(sock);
+
+        mexPrintf("PX4 connected on TCP port 4560.\n");
+
+        ssSetPWorkValue(S, 0, (void *)&sock);
+
+        uint8_t *buffer = nullptr;
+        buffer = (uint8_t *)calloc(1024, 1);
+        ssSetPWorkValue(S, 1, (void *)buffer);
     }
     catch (const std::exception &e)
     {
-        static char errorStatus[256];
-        sprintf(errorStatus, "%s\n", e.what());
-        ssSetErrorStatus(S, errorStatus);
+        eStatus = std::string(e.what());
+        ssSetErrorStatus(S, eStatus.c_str());
     }
 }
 #endif /*  MDL_START */
@@ -151,272 +150,179 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 {
     try
     {
-        void **PWork = ssGetPWork(S);
+        asio::ip::tcp::socket *sock = (asio::ip::tcp::socket *)(ssGetPWorkValue(S, 0));
 
-        asio::ip::tcp::socket *socket = ((asio::ip::tcp::socket *)PWork[0]);
-        
-        double *pwm = ((double *)PWork[1]);
+        uint8_t *buffer = (uint8_t *)ssGetPWorkValue(S, 1);
+
+        if (!sock)
+        {
+            return;
+        }
 
         InputRealPtrsType time = ssGetInputPortRealSignalPtrs(S, 0);
-        InputRealPtrsType A_measured = ssGetInputPortRealSignalPtrs(S, 1);             
-        InputRealPtrsType omega_b_measured = ssGetInputPortRealSignalPtrs(S, 2);   
-        InputRealPtrsType B_measured = ssGetInputPortRealSignalPtrs(S, 3);             
-        InputRealPtrsType P_measured = ssGetInputPortRealSignalPtrs(S, 4);              
-        InputRealPtrsType T_measured = ssGetInputPortRealSignalPtrs(S, 5);    
-        InputRealPtrsType h_measured = ssGetInputPortRealSignalPtrs(S, 6);                 
-        InputRealPtrsType q_measured = ssGetInputPortRealSignalPtrs(S, 7);     
-        InputRealPtrsType xyz_measured = ssGetInputPortRealSignalPtrs(S, 8);    
-        InputRealPtrsType rc_channels = ssGetInputPortRealSignalPtrs(S, 9); 
-        InputRealPtrsType ground_truth = ssGetInputPortRealSignalPtrs(S, 10); 
+        InputRealPtrsType A_measured = ssGetInputPortRealSignalPtrs(S, 1);
+        InputRealPtrsType omega_b_measured = ssGetInputPortRealSignalPtrs(S, 2);
+        InputRealPtrsType B_measured = ssGetInputPortRealSignalPtrs(S, 3);
+        InputRealPtrsType P_measured = ssGetInputPortRealSignalPtrs(S, 4);
+        InputRealPtrsType T_measured = ssGetInputPortRealSignalPtrs(S, 5);
+        InputRealPtrsType h_measured = ssGetInputPortRealSignalPtrs(S, 6);
+        InputRealPtrsType q_measured = ssGetInputPortRealSignalPtrs(S, 7);
+        InputRealPtrsType xyz_measured = ssGetInputPortRealSignalPtrs(S, 8);
+        InputRealPtrsType rc_channels = ssGetInputPortRealSignalPtrs(S, 9);
+        InputRealPtrsType ground_truth = ssGetInputPortRealSignalPtrs(S, 10);
 
-        real_T *pwm_out = ssGetOutputPortRealSignal(S, 0);
+        memset(buffer, 0, 1024);
 
-        uint8_t buffer[65535];
+        size_t bytesToSend;
+        size_t bytesSent;
         mavlink_message_t encoded_msg;
+
+        mavlink_heartbeat_t heartbeat_msg;
+        heartbeat_msg.autopilot = (uint8_t)1;
+        heartbeat_msg.type = (uint8_t)12;
+        heartbeat_msg.system_status=(uint8_t)0;
+        heartbeat_msg.base_mode=(uint8_t)0;
+        heartbeat_msg.custom_mode=(uint32_t)0;
+
+        mavlink_msg_heartbeat_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &heartbeat_msg);
+
+        bytesToSend = mavlink_msg_to_send_buffer(&buffer[0], &encoded_msg);
+
+        mavlink_hil_sensor_t hil_sensor_msg;
+        hil_sensor_msg.time_usec = (uint64_t)((*time[0]) * 1e6);
+        hil_sensor_msg.xacc = (float)(*A_measured[0]);
+        hil_sensor_msg.yacc = (float)(*A_measured[1]);
+        hil_sensor_msg.zacc = (float)(*A_measured[2]);
+        hil_sensor_msg.xgyro = (float)(*omega_b_measured[0]);
+        hil_sensor_msg.ygyro = (float)(*omega_b_measured[1]);
+        hil_sensor_msg.zgyro = (float)(*omega_b_measured[2]);
+        hil_sensor_msg.xmag = (float)(*B_measured[0]);
+        hil_sensor_msg.ymag = (float)(*B_measured[1]);
+        hil_sensor_msg.zmag = (float)(*B_measured[2]);
+        hil_sensor_msg.abs_pressure = (float)(*P_measured[0]);
+        hil_sensor_msg.diff_pressure = (float)(*q_measured[0]);
+        hil_sensor_msg.temperature = (float)(*T_measured[0]);
+        hil_sensor_msg.fields_updated = (uint32_t)0x1FFF;
+
+        mavlink_msg_hil_sensor_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_sensor_msg);
+
+        bytesToSend = bytesToSend + mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+
+        mavlink_hil_gps_t hil_gps_msg;
+        hil_gps_msg.time_usec = (uint64_t)((*time[0]) * 1e6);
+        hil_gps_msg.fix_type = (uint8_t)(*xyz_measured[0]);
+        hil_gps_msg.lat = (int32_t)(*xyz_measured[1]);
+        hil_gps_msg.lon = (int32_t)(*xyz_measured[2]);
+        hil_gps_msg.alt = (int32_t)(*xyz_measured[3]);
+        hil_gps_msg.eph = (uint16_t)(*xyz_measured[4]);
+        hil_gps_msg.epv = (uint16_t)(*xyz_measured[5]);
+        hil_gps_msg.vel = (uint16_t)(*xyz_measured[6]);
+        hil_gps_msg.vn = (int16_t)(*xyz_measured[7]);
+        hil_gps_msg.ve = (int16_t)(*xyz_measured[8]);
+        hil_gps_msg.vd = (int16_t)(*xyz_measured[9]);
+        hil_gps_msg.cog = (uint16_t)(*xyz_measured[10]);
+        hil_gps_msg.satellites_visible = (uint8_t)(*xyz_measured[11]);
+
+        mavlink_msg_hil_gps_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_gps_msg);
+
+        bytesToSend = bytesToSend + mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+
+        mavlink_hil_rc_inputs_raw_t hil_rc_inputs_raw;
+        hil_rc_inputs_raw.time_usec = (uint64_t)((*time[0]) * 1e6);
+        hil_rc_inputs_raw.chan1_raw = (uint16_t)(*rc_channels[0]);
+        hil_rc_inputs_raw.chan2_raw = (uint16_t)(*rc_channels[1]);
+        hil_rc_inputs_raw.chan3_raw = (uint16_t)(*rc_channels[2]);
+        hil_rc_inputs_raw.chan4_raw = (uint16_t)(*rc_channels[3]);
+        hil_rc_inputs_raw.chan5_raw = (uint16_t)(*rc_channels[4]);
+        hil_rc_inputs_raw.chan6_raw = (uint16_t)(*rc_channels[5]);
+        hil_rc_inputs_raw.chan7_raw = (uint16_t)(*rc_channels[6]);
+        hil_rc_inputs_raw.chan8_raw = (uint16_t)(*rc_channels[7]);
+        hil_rc_inputs_raw.chan9_raw = (uint16_t)(*rc_channels[8]);
+        hil_rc_inputs_raw.chan10_raw = (uint16_t)(*rc_channels[9]);
+        hil_rc_inputs_raw.chan11_raw = (uint16_t)(*rc_channels[10]);
+        hil_rc_inputs_raw.chan12_raw = (uint16_t)(*rc_channels[11]);
+        hil_rc_inputs_raw.rssi = (uint8_t)(*rc_channels[12]);
+
+        mavlink_msg_hil_rc_inputs_raw_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_rc_inputs_raw);
+
+        bytesToSend = bytesToSend + mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+
+        float phi = (float)(*ground_truth[0]);
+        float theta = (float)(*ground_truth[1]);
+        float psi = (float)(*ground_truth[2]);
+
+        float sphi = std::sin(phi / 2.0);
+        float stheta = std::sin(theta / 2.0);
+        float spsi = std::sin(psi / 2.0);
+        float cphi = std::cos(phi / 2.0);
+        float ctheta = std::cos(theta / 2.0);
+        float cpsi = std::cos(psi / 2.0);
+
+        float attitude_quaternion[4];
+        attitude_quaternion[0] = cpsi * ctheta * cphi + spsi * stheta * sphi;
+        attitude_quaternion[1] = cpsi * ctheta * sphi - spsi * stheta * cphi;
+        attitude_quaternion[2] = cpsi * stheta * cphi + spsi * ctheta * sphi;
+        attitude_quaternion[3] = spsi * ctheta * cphi - cpsi * stheta * sphi;
+
+        mavlink_hil_state_quaternion_t hil_state_quaternion;
+        hil_state_quaternion.attitude_quaternion[0] = attitude_quaternion[0];
+        hil_state_quaternion.attitude_quaternion[1] = attitude_quaternion[1];
+        hil_state_quaternion.attitude_quaternion[2] = attitude_quaternion[2];
+        hil_state_quaternion.attitude_quaternion[3] = attitude_quaternion[3];
+        hil_state_quaternion.rollspeed = (float)(*ground_truth[3]);
+        hil_state_quaternion.pitchspeed = (float)(*ground_truth[4]);
+        hil_state_quaternion.yawspeed = (float)(*ground_truth[5]);
+        hil_state_quaternion.lat = (int32_t)(*ground_truth[6]);
+        hil_state_quaternion.lon = (int32_t)(*ground_truth[7]);
+        hil_state_quaternion.alt = (int32_t)(*ground_truth[8]);
+        hil_state_quaternion.vx = (int16_t)(*ground_truth[9]);
+        hil_state_quaternion.vy = (int16_t)(*ground_truth[10]);
+        hil_state_quaternion.vz = (int16_t)(*ground_truth[11]);
+        hil_state_quaternion.ind_airspeed = (uint16_t)(*ground_truth[12]);
+        hil_state_quaternion.true_airspeed = (uint16_t)(*ground_truth[13]);
+        hil_state_quaternion.xacc = (int16_t)(*ground_truth[14]);
+        hil_state_quaternion.yacc = (int16_t)(*ground_truth[15]);
+        hil_state_quaternion.zacc = (int16_t)(*ground_truth[16]);
+
+        mavlink_msg_hil_state_quaternion_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_state_quaternion);
+
+        bytesToSend = bytesToSend + mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+
+        bytesSent = sock->send(asio::buffer(buffer, bytesToSend));
         
-        //HIL_SENSOR
+        size_t bytesAvailable = sock->available();
+
+        if (bytesAvailable)
         {
 
-#ifdef S_FUNCTION_DEBUG
-        mexPrintf("time=%f\n", (*time[0]));
-        mexPrintf("A_measured(1)=%f\n", (*A_measured[0]));
-        mexPrintf("A_measured(2)=%f\n", (*A_measured[1]));
-        mexPrintf("A_measured(3)=%f\n", (*A_measured[2]));
-        mexPrintf("omega_b_measured(1)=%f\n", (*omega_b_measured[0]));
-        mexPrintf("omega_b_measured(2)=%f\n", (*omega_b_measured[1]));
-        mexPrintf("omega_b_measured(3)=%f\n", (*omega_b_measured[2]));
-        mexPrintf("B_measured(1)=%f\n", (*B_measured[0]));
-        mexPrintf("B_measured(2)=%f\n", (*B_measured[1]));
-        mexPrintf("B_measured(3)=%f\n", (*B_measured[2]));
-        mexPrintf("P_measured=%f\n", (*P_measured[0]));
-        mexPrintf("T_measured=%f\n", (*T_measured[0]));
-        mexPrintf("h_measured=%f\n",(*h_measured[0]));
-        mexPrintf("q_measured=%f\n",(*q_measured[0]));            
-#endif
+            memset(buffer, 0, 1024);
 
-        mavlink_hil_sensor_t msg;
-        msg.time_usec = (uint64_t)((*time[0]) * 1e6);
-        msg.xacc = (float)(*A_measured[0]);    
-        msg.yacc = (float)(*A_measured[1]);   
-        msg.zacc = (float)(*A_measured[2]);    
-        msg.xgyro = (float)(*omega_b_measured[0]); 
-        msg.ygyro = (float)(*omega_b_measured[1]);
-        msg.zgyro = (float)(*omega_b_measured[2]);
-        msg.xmag = (float)(*B_measured[0]); 
-        msg.ymag = (float)(*B_measured[1]); 
-        msg.zmag = (float)(*B_measured[2]);
-        msg.abs_pressure = (float)(*P_measured[0]);
-        msg.diff_pressure = (float)(*q_measured[0]); 
-        msg.pressure_alt = (float)(*h_measured[0]);  
-        msg.temperature = (float)(*T_measured[0]); 
-        msg.fields_updated = (uint32_t)0x1fff;
-
-        mavlink_msg_hil_sensor_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &msg);
-
-        auto length = mavlink_msg_to_send_buffer(buffer, &encoded_msg);
-
-#ifndef S_FUNCTION_DEBUG
-        if (asio::write(*socket, asio::buffer(buffer, length)) != length)
-        {
-            std::runtime_error("Error sending HIL_SENSOR message!");
-        }
-#endif
-
-        }
-        
-        //HIL_GPS
-        {
-#ifdef S_FUNCTION_DEBUG
-        mexPrintf("time=%f\n", (*time[0]));
-        mexPrintf("fix=%f\n", (*xyz_measured[0]));
-        mexPrintf("lat=%f\n", (*xyz_measured[1]));
-        mexPrintf("lon=%f\n", (*xyz_measured[2]));
-        mexPrintf("alt=%f\n", (*xyz_measured[3]));
-        mexPrintf("eph=%f\n", (*xyz_measured[4]));
-        mexPrintf("epv=%f\n", (*xyz_measured[5]));
-        mexPrintf("vel=%f\n", (*xyz_measured[6]));
-        mexPrintf("vn=%f\n", (*xyz_measured[7]));
-        mexPrintf("ve=%f\n", (*xyz_measured[8]));
-        mexPrintf("vd=%f\n", (*xyz_measured[9]));
-        mexPrintf("cog=%f\n", (*xyz_measured[10]));        
-        mexPrintf("sattelites_visible=%f\n", (*xyz_measured[11]));
-#endif
-        mavlink_hil_gps_t msg;
-        msg.time_usec = (uint64_t)((*time[0]) * 1e6);
-        msg.fix_type = (uint8_t)(*xyz_measured[0]);
-        msg.lat = (int32_t)(*xyz_measured[1]); 
-        msg.lon = (int32_t)(*xyz_measured[2]); 
-        msg.alt = (int32_t)(*xyz_measured[3]);  
-        msg.eph = (uint16_t)(*xyz_measured[4]); 
-        msg.epv = (uint16_t)(*xyz_measured[5]); 
-        msg.vel = (uint16_t)(*xyz_measured[6]);
-        msg.vn = (int16_t)(*xyz_measured[7]); 
-        msg.ve = (int16_t)(*xyz_measured[8]); 
-        msg.vd = (int16_t)(*xyz_measured[9]);
-        msg.cog = (uint16_t)(*xyz_measured[10]);
-        msg.satellites_visible = (uint8_t)(*xyz_measured[11]);
-        msg.id=0;
-
-        mavlink_msg_hil_gps_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &msg);
-        auto length = mavlink_msg_to_send_buffer(buffer, &encoded_msg);
-
-#ifndef S_FUNCTION_DEBUG
-        if (asio::write(*socket, asio::buffer(buffer, length)) != length)
-        {
-            std::runtime_error("Error sending HIL_GPS message!");
-        }
-#endif
-        }
-        
-        //HIL_STATE_QUATERNION
-        {   
-            
-            float phi=(float)(*ground_truth[0]);
-            float theta=(float)(*ground_truth[1]);
-            float psi=(float)(*ground_truth[2]);
-         
-            float sphi=std::sin(phi/2.0);
-            float stheta=std::sin(theta/2.0);
-            float spsi=std::sin(psi/2.0);
-            float cphi=std::cos(phi/2.0);
-            float ctheta=std::cos(theta/2.0);
-            float cpsi=std::cos(psi/2.0);
-
-            float attitude_quaternion[4];
-            attitude_quaternion[0]=cpsi*ctheta*cphi + spsi*stheta*sphi;
-            attitude_quaternion[1]=cpsi*ctheta*sphi - spsi*stheta*cphi;
-            attitude_quaternion[2]=cpsi*stheta*cphi + spsi*ctheta*sphi;
-            attitude_quaternion[3]=spsi*ctheta*cphi - cpsi*stheta*sphi;
-
-            mavlink_hil_state_quaternion_t msg;
-            msg.attitude_quaternion[0]=attitude_quaternion[0];
-            msg.attitude_quaternion[1]=attitude_quaternion[1];
-            msg.attitude_quaternion[2]=attitude_quaternion[2];
-            msg.attitude_quaternion[3]=attitude_quaternion[3];
-            msg.rollspeed=(float)(*ground_truth[3]); 
-            msg.pitchspeed=(float)(*ground_truth[4]); 
-            msg.yawspeed=(float)(*ground_truth[5]); 
-            msg.lat=(int32_t)(*ground_truth[6]);
-            msg.lon=(int32_t)(*ground_truth[7]); 
-            msg.alt=(int32_t)(*ground_truth[8]);
-            msg.vx=(int16_t)(*ground_truth[9]);
-            msg.vy=(int16_t)(*ground_truth[10]);
-            msg.vz=(int16_t)(*ground_truth[11]);
-            msg.ind_airspeed=(uint16_t)(*ground_truth[12]);
-            msg.true_airspeed=(uint16_t)(*ground_truth[13]);
-            msg.xacc=(int16_t)(*ground_truth[14]);
-            msg.yacc=(int16_t)(*ground_truth[15]);
-            msg.zacc=(int16_t)(*ground_truth[16]);
-
-            
-            mavlink_msg_hil_state_quaternion_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &msg);
-            auto length = mavlink_msg_to_send_buffer(buffer, &encoded_msg);
-
-#ifndef S_FUNCTION_DEBUG
-        if (asio::write(*socket, asio::buffer(buffer, length)) != length)
-        {
-            std::runtime_error("Error sending HIL_STATE_QUATERNION message!");
-        }
-#endif
-        }
-        
-        //RC_CHANNELS
-        {
-#ifdef S_FUNCTION_DEBUG
-        mexPrintf("time=%f\n", (*time[0]));
-        mexPrintf("chancount=%f\n", (*rc_channels[0]));
-        mexPrintf("chan1_raw=%f\n", (*rc_channels[1]));
-        mexPrintf("chan2_raw=%f\n", (*rc_channels[2]));
-        mexPrintf("chan3_raw=%f\n", (*rc_channels[3]));
-        mexPrintf("chan4_raw=%f\n", (*rc_channels[4]));
-        mexPrintf("chan5_raw=%f\n", (*rc_channels[5]));
-        mexPrintf("chan6_raw=%f\n", (*rc_channels[6]));
-        mexPrintf("chan7_raw=%f\n", (*rc_channels[7]));
-        mexPrintf("chan8_raw=%f\n", (*rc_channels[8]));
-        mexPrintf("chan9_raw=%f\n", (*rc_channels[9]));
-        mexPrintf("chan10_raw=%f\n", (*rc_channels[10]));
-        mexPrintf("chan11_raw=%f\n", (*rc_channels[11]));
-        mexPrintf("chan12_raw=%f\n", (*rc_channels[12]));        
-        mexPrintf("chan13_raw=%f\n", (*rc_channels[13]));
-        mexPrintf("chan14_raw=%f\n", (*rc_channels[14]));
-        mexPrintf("chan15_raw=%f\n", (*rc_channels[15]));
-        mexPrintf("chan16_raw=%f\n", (*rc_channels[16]));        
-        mexPrintf("chan17_raw=%f\n", (*rc_channels[17]));      
-        mexPrintf("chan18_raw=%f\n", (*rc_channels[18])); 
-        mexPrintf("rssi=%f\n", (*rc_channels[19]));
-#endif
-        mavlink_rc_channels_t msg;
-        msg.time_boot_ms = (uint64_t)((*time[0]) * 1e3);
-        msg.chancount = (uint8_t)(*rc_channels[0]);            
-        msg.chan1_raw = (uint16_t)(*rc_channels[1]);
-        msg.chan2_raw = (uint16_t)(*rc_channels[2]);
-        msg.chan3_raw = (uint16_t)(*rc_channels[3]);
-        msg.chan4_raw = (uint16_t)(*rc_channels[4]);
-        msg.chan5_raw = (uint16_t)(*rc_channels[5]);
-        msg.chan6_raw = (uint16_t)(*rc_channels[6]);
-        msg.chan7_raw = (uint16_t)(*rc_channels[7]);
-        msg.chan8_raw = (uint16_t)(*rc_channels[8]);
-        msg.chan9_raw = (uint16_t)(*rc_channels[9]);
-        msg.chan10_raw = (uint16_t)(*rc_channels[10]);
-        msg.chan11_raw = (uint16_t)(*rc_channels[11]);
-        msg.chan12_raw = (uint16_t)(*rc_channels[12]);
-        msg.chan13_raw = (uint16_t)(*rc_channels[13]);
-        msg.chan14_raw = (uint16_t)(*rc_channels[14]);
-        msg.chan15_raw = (uint16_t)(*rc_channels[15]);
-        msg.chan16_raw = (uint16_t)(*rc_channels[16]);
-        msg.chan17_raw = (uint16_t)(*rc_channels[17]);
-        msg.chan18_raw = (uint16_t)(*rc_channels[18]);            
-        msg.rssi = (uint8_t)(*rc_channels[19]);
-        
-        mavlink_msg_rc_channels_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &msg);
-        auto length = mavlink_msg_to_send_buffer(buffer, &encoded_msg);
-
-#ifndef S_FUNCTION_DEBUG
-        if (asio::write(*socket, asio::buffer(buffer, length)) != length)
-        {
-            std::runtime_error("Error sending RC_CHANNELS message!");
-        }
-#endif
-
-        }
-
-#ifndef S_FUNCTION_DEBUG
-        auto availableLength = socket->available();
-        if (availableLength)
-        {
-            asio::read(*socket, asio::buffer(buffer, availableLength));
+            size_t bytesReceived = sock->receive(asio::buffer(buffer, bytesAvailable));
 
             mavlink_status_t status;
-            for (unsigned int i = 0; i < availableLength; i++)
+            for (unsigned int i = 0; i < bytesReceived; i++)
             {
                 if (mavlink_parse_char(MAVLINK_COMM_0, buffer[i], &encoded_msg, &status))
                 {
                     if (encoded_msg.msgid == MAVLINK_MSG_ID_HIL_ACTUATOR_CONTROLS)
                     {
-                        mavlink_hil_actuator_controls_t msg;
-                        mavlink_msg_hil_actuator_controls_decode(&encoded_msg, &msg);
-                        for (unsigned int j = 0; j < 16; j++)
-                        {
-                            pwm[j] = (real_T)msg.controls[j];
-                        }
+                        mavlink_msg_hil_actuator_controls_decode(&encoded_msg, &hil_actuator_controls_msg);
                     }
                 }
             }
         }
 
+        real_T *pwm = ssGetOutputPortRealSignal(S, 0);
+
         for (unsigned int i = 0; i < 16; i++)
         {
-            pwm_out[i] = pwm[i];
+            pwm[i] = (real_T)hil_actuator_controls_msg.controls[i];
         }
-
-        
-#endif
     }
     catch (const std::exception &e)
     {
-        static char errorStatus[256];
-        sprintf(errorStatus, "%s\n", e.what());
-        ssSetErrorStatus(S, errorStatus);
+        eStatus = std::string(e.what());
+        ssSetErrorStatus(S, eStatus.c_str());
     }
 }
 
@@ -428,22 +334,19 @@ static void mdlOutputs(SimStruct *S, int_T tid)
  */
 static void mdlTerminate(SimStruct *S)
 {
-#ifndef S_FUNCTION_DEBUG
-    try
+    if (ssGetPWork(S) != NULL)
     {
-        void **PWork = ssGetPWork(S);
-        if (PWork[0] != nullptr)
+        asio::ip::tcp::socket *sock = (asio::ip::tcp::socket *)(ssGetPWorkValue(S, 0));
+        uint8_t *buffer = (uint8_t *)ssGetPWorkValue(S, 1);
+        if (sock)
         {
-            ((asio::ip::tcp::socket *)PWork[0])->close();
+            sock->close();
+        }
+        if (buffer)
+        {
+            free(buffer);
         }
     }
-    catch (const std::exception &e)
-    {
-        static char errorStatus[256];
-        sprintf(errorStatus, "%s\n", e.what());
-        ssSetErrorStatus(S, errorStatus);
-    }
-#endif
 }
 /*======================================================*
  * See sfuntmpl.doc for the optional S-function methods *

@@ -8,7 +8,10 @@ Requirements
 - MATLAB & Simulink (MATLAB R2022a or earlier)
 - MinGW-w64 or MSVC C/C++ Compiler
 - QGroundControl
-- PX4-Autopilot source code
+- PX4-Autopilot source code (the latest stable release) \
+https://github.com/PX4/PX4-Autopilot
+- Windows Subsystem for Linux (WSL 2) \
+https://learn.microsoft.com/en-us/windows/wsl/about
 
 Files
 
@@ -29,27 +32,31 @@ https://mathworks.com/support/requirements/supported-compilers.html.
 -  Unzip the "includes.zip archive".
 -  Run "make.m" to create a "pixhawk_sil_connector.mexw64" (Windows), "pixhawk_sil_connector.mexa64" (Linux), "pixhawk_sil_connector.mexmaci64" (macOS) file.
 
-Use instructions
+Note: If you are using a compiler other than MSVC (e.g. MinGW64) you need to add the -lws2_32 flag to the "mex" command in the "make.m" file.
 
-- Download and install QGroundControl  [https://docs.qgroundcontrol.com/master/en/getting_started/download_and_install.html](https://docs.qgroundcontrol.com/master/en/getting_started/download_and_install.html).
-- Create a new "Comm Link" in QGroundControl via the "Application Settings" page. The type of the link must be UDP, the port 18570, and the server address 127.0.0.1.
+Use instructions (Simulink model running in Windows, PX4 Autopilot running in WSL 2)
+
+- Download and install QGroundControl for Windows [https://docs.qgroundcontrol.com/master/en/getting_started/download_and_install.html](https://docs.qgroundcontrol.com/master/en/getting_started/download_and_install.html).
+- Create a new "Comm Link" in QGroundControl via the "Application Settings" page. The type of the link must be UDP, thed port 18570, and the server address must be the ip address of the WLS 2 instance. You can use the "ip addr" command to find the ip of the WSL 2 instance. Note that the ip of the WSL  isntance will change every time you relaunch the instance.
 - Open and run "pixhawk_sil_connector_example.slx".
-- Build the PX4-Autopilot source code using the following commands:  <pre>
-export PX4_SIM_HOST_ADDR=192.168.1.11
-export PX4_HOME_LAT=42.841448
-export PX4_HOME_LON=24.770727
-export PX4_HOME_ALT=0.5
-export PX4_ID=0
-make px4_sitl none_plane</pre>  [https://docs.px4.io/master/en/dev_setup/building_px4.html](https://docs.px4.io/master/en/dev_setup/building_px4.html).
+- Build the PX4-Autopilot source code in WSL 2 using the following commands:  <pre>
+export PX4_SIM_HOST_ADDR=&lt;the ip of the computer running the Simulink model&gt;
+make px4_sitl none_iris</pre>  [https://docs.px4.io/master/en/dev_setup/building_px4.html](https://docs.px4.io/master/en/dev_setup/building_px4.html) \
+[https://docs.px4.io/main/en/simulation/](https://docs.px4.io/main/en/simulation/).
 
-[![Example use of the Pixhawk SIL connector](https://i.ytimg.com/vi/b7P1-UgXS7Q/maxresdefault.jpg)](https://youtu.be/b7P1-UgXS7Q)
+[![Demonstration of the Pixhawk SIL connector example](https://i.ytimg.com/vi/9y0QYBQ-L3I/maxresdefault.jpg)](https://youtu.be/9y0QYBQ-L3I)
 
-<p align="center">Example use of the Pixhawk SIL connector</p>
+<p align="center">Demonstration of the Pixhawk SIL connector example</p>
 
-![Pixhawk SIL connector example](https://github.com/KBoychev/pixhawk-sil-connector/blob/master/pixhawk_sil_connector_example.png)
+![Pixhawk SIL connector example](pixhawk_sil_connector_example.png)
 
 <p align="center">Pixhawk SIL connector example</p>
 
-Additional information available at
+![Pixhawk SIL connector sensors](pixhawk_sil_connector_example_sensors.png)
+
+<p align="center">Pixhawk SIL connector example sensors</p>
+
+Additional information available at:
 
 https://fst.aviumtechnologies.com/pixhawk-sil-connector
+
