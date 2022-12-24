@@ -100,7 +100,7 @@ static void mdlInitializeSizes(SimStruct *S)
  */
 static void mdlInitializeSampleTimes(SimStruct *S)
 {
-    ssSetSampleTime(S, 0, 0.005);
+    ssSetSampleTime(S, 0, 0.004);
     ssSetOffsetTime(S, 0, 0.0);
     ssSetModelReferenceSampleTimeDefaultInheritance(S);
 }
@@ -173,20 +173,18 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 
         memset(buffer, 0, 1024);
 
-        size_t bytesToSend;
-        size_t bytesSent;
         mavlink_message_t encoded_msg;
 
         mavlink_heartbeat_t heartbeat_msg;
-        heartbeat_msg.autopilot = (uint8_t)1;
-        heartbeat_msg.type = (uint8_t)12;
+        heartbeat_msg.autopilot = (uint8_t)MAV_AUTOPILOT_GENERIC;
+        heartbeat_msg.type = (uint8_t)MAV_TYPE_GENERIC;
         heartbeat_msg.system_status=(uint8_t)0;
         heartbeat_msg.base_mode=(uint8_t)0;
         heartbeat_msg.custom_mode=(uint32_t)0;
 
         mavlink_msg_heartbeat_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &heartbeat_msg);
 
-        bytesToSend = mavlink_msg_to_send_buffer(&buffer[0], &encoded_msg);
+        auto bytesToSend = mavlink_msg_to_send_buffer(&buffer[0], &encoded_msg);
 
         mavlink_hil_sensor_t hil_sensor_msg;
         hil_sensor_msg.time_usec = (uint64_t)((*time[0]) * 1e6);
@@ -203,10 +201,11 @@ static void mdlOutputs(SimStruct *S, int_T tid)
         hil_sensor_msg.diff_pressure = (float)(*q_measured[0]);
         hil_sensor_msg.temperature = (float)(*T_measured[0]);
         hil_sensor_msg.fields_updated = (uint32_t)0x1FFF;
+        hil_sensor_msg.id = (uint8_t)0;
 
         mavlink_msg_hil_sensor_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_sensor_msg);
 
-        bytesToSend = bytesToSend + mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+        bytesToSend += mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
 
         mavlink_hil_gps_t hil_gps_msg;
         hil_gps_msg.time_usec = (uint64_t)((*time[0]) * 1e6);
@@ -216,16 +215,18 @@ static void mdlOutputs(SimStruct *S, int_T tid)
         hil_gps_msg.alt = (int32_t)(*xyz_measured[3]);
         hil_gps_msg.eph = (uint16_t)(*xyz_measured[4]);
         hil_gps_msg.epv = (uint16_t)(*xyz_measured[5]);
-        hil_gps_msg.vel = (uint16_t)(*xyz_measured[6]);
-        hil_gps_msg.vn = (int16_t)(*xyz_measured[7]);
-        hil_gps_msg.ve = (int16_t)(*xyz_measured[8]);
-        hil_gps_msg.vd = (int16_t)(*xyz_measured[9]);
+        hil_gps_msg.vel = (uint16_t)std::floor(*xyz_measured[6]);
+        hil_gps_msg.vn = (int16_t)std::floor(*xyz_measured[7]);
+        hil_gps_msg.ve = (int16_t)std::floor(*xyz_measured[8]);
+        hil_gps_msg.vd = (int16_t)std::floor(*xyz_measured[9]);
         hil_gps_msg.cog = (uint16_t)(*xyz_measured[10]);
         hil_gps_msg.satellites_visible = (uint8_t)(*xyz_measured[11]);
+        hil_gps_msg.id = (uint8_t)0;
+        hil_gps_msg.yaw = (uint16_t)0;
 
         mavlink_msg_hil_gps_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_gps_msg);
 
-        bytesToSend = bytesToSend + mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+        bytesToSend += mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
 
         mavlink_hil_rc_inputs_raw_t hil_rc_inputs_raw;
         hil_rc_inputs_raw.time_usec = (uint64_t)((*time[0]) * 1e6);
@@ -245,7 +246,7 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 
         mavlink_msg_hil_rc_inputs_raw_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_rc_inputs_raw);
 
-        bytesToSend = bytesToSend + mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+        bytesToSend += mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
 
         float phi = (float)(*ground_truth[0]);
         float theta = (float)(*ground_truth[1]);
@@ -286,21 +287,22 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 
         mavlink_msg_hil_state_quaternion_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_state_quaternion);
 
-        bytesToSend = bytesToSend + mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+        bytesToSend += mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
 
-        bytesSent = sock->send(asio::buffer(buffer, bytesToSend));
+        auto bytesSent = sock->send(asio::buffer(buffer, bytesToSend));
         
-        size_t bytesAvailable = sock->available();
+        auto bytesAvailable = sock->available();
 
         if (bytesAvailable)
         {
 
             memset(buffer, 0, 1024);
 
-            size_t bytesReceived = sock->receive(asio::buffer(buffer, bytesAvailable));
+            auto bytesReceived = sock->receive(asio::buffer(buffer, bytesAvailable));
 
             mavlink_status_t status;
-            for (unsigned int i = 0; i < bytesReceived; i++)
+
+            for (auto i = 0; i < bytesReceived; i++)
             {
                 if (mavlink_parse_char(MAVLINK_COMM_0, buffer[i], &encoded_msg, &status))
                 {
@@ -314,7 +316,7 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 
         real_T *pwm = ssGetOutputPortRealSignal(S, 0);
 
-        for (unsigned int i = 0; i < 16; i++)
+        for (auto i = 0; i < 16; i++)
         {
             pwm[i] = (real_T)hil_actuator_controls_msg.controls[i];
         }
