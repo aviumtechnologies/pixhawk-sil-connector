@@ -228,6 +228,45 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 
         bytesToSend += mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
 
+        double min_distance = 2.5;
+        double max_distance = 5000;
+        double low_signal_strength=1.5811;
+        double high_signal_strength=70.7284;
+        double current_distance = (*h_measured[0]);
+        uint8_t signal_quality;
+        
+        if(current_distance <= min_distance){
+	        current_distance = min_distance;
+            signal_quality = 100;
+        }else if (current_distance >= max_distance || std::isinf(current_distance)){
+	        current_distance = 0;
+            signal_quality = 0;
+        }else{
+            double signal_strength = std::sqrt(current_distance);
+	        signal_quality = (high_signal_strength - signal_strength) / (high_signal_strength - low_signal_strength)*100;
+        }
+        
+        mavlink_distance_sensor_t distance_sensor_msg;
+        distance_sensor_msg.time_boot_ms=(uint32_t)((*time[0]) * 1e3);
+        distance_sensor_msg.min_distance=(uint16_t)min_distance;
+        distance_sensor_msg.max_distance=(uint16_t)max_distance;
+        distance_sensor_msg.current_distance=(uint16_t)current_distance;
+        distance_sensor_msg.type=(uint8_t)0;
+        distance_sensor_msg.id=(uint8_t)0;
+        distance_sensor_msg.orientation=(uint8_t)0;
+        distance_sensor_msg.covariance=(uint8_t)UINT8_MAX;
+        distance_sensor_msg.horizontal_fov=(float)0.05236;
+        distance_sensor_msg.vertical_fov=(float)0.05236;
+        distance_sensor_msg.quaternion[0]=(float)1; 
+        distance_sensor_msg.quaternion[1]=(float)0; 
+        distance_sensor_msg.quaternion[2]=(float)0; 
+        distance_sensor_msg.quaternion[3]=(float)0; 
+        distance_sensor_msg.signal_quality=(uint8_t)signal_quality;
+
+        mavlink_msg_distance_sensor_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &distance_sensor_msg);
+
+        bytesToSend += mavlink_msg_to_send_buffer(&buffer[bytesToSend], &encoded_msg);
+
         mavlink_hil_rc_inputs_raw_t hil_rc_inputs_raw;
         hil_rc_inputs_raw.time_usec = (uint64_t)((*time[0]) * 1e6);
         hil_rc_inputs_raw.chan1_raw = (uint16_t)(*rc_channels[0]);
