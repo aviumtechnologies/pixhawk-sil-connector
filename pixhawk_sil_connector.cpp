@@ -251,9 +251,9 @@ static void mdlOutputs(SimStruct *S, int_T tid)
         distance_sensor_msg.min_distance=(uint16_t)min_distance;
         distance_sensor_msg.max_distance=(uint16_t)max_distance;
         distance_sensor_msg.current_distance=(uint16_t)current_distance;
-        distance_sensor_msg.type=(uint8_t)0;
+        distance_sensor_msg.type=(uint8_t)MAV_DISTANCE_SENSOR_LASER;
         distance_sensor_msg.id=(uint8_t)0;
-        distance_sensor_msg.orientation=(uint8_t)0;
+        distance_sensor_msg.orientation=(uint8_t)MAV_SENSOR_ROTATION_PITCH_270;
         distance_sensor_msg.covariance=(uint8_t)UINT8_MAX;
         distance_sensor_msg.horizontal_fov=(float)0.05236;
         distance_sensor_msg.vertical_fov=(float)0.05236;
