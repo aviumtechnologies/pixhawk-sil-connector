@@ -40,7 +40,12 @@ Use instructions (Simulink model running in Windows, PX4 Autopilot running in WS
 - Create a new "Comm Link" in QGroundControl via the "Application Settings" page. The type of the link must be UDP, thed port 18570, and the server address must be the ip address of the WLS 2 instance. You can use the "ip addr" command to find the ip of the WSL 2 instance. Note that the ip of the WSL  isntance will change every time you relaunch the instance.
 - Open and run "pixhawk_sil_connector_example.slx".
 - Build the PX4-Autopilot source code in WSL 2 using the following commands:  <pre>
-export PX4_SIM_HOST_ADDR=&lt;the ip of the computer running the Simulink model&gt;
+git clone --recursive https://github.com/PX4/PX4-Autopilot
+cd PX4-Autopilot
+git checkout v1.13.x #(PX4 version)
+git submodule sync --recursive
+git submodule update --init --recursive
+export PX4_SIM_HOST_ADDR=x.x.x.x #(the ip of the computer running the Simulink model)
 make px4_sitl none_iris</pre>  [https://docs.px4.io/master/en/dev_setup/building_px4.html](https://docs.px4.io/master/en/dev_setup/building_px4.html) \
 [https://docs.px4.io/main/en/simulation/](https://docs.px4.io/main/en/simulation/).
 
