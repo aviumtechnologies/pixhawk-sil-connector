@@ -49,6 +49,13 @@ export PX4_SIM_HOST_ADDR=x.x.x.x #(the ip of the computer running the Simulink m
 make px4_sitl none_iris</pre>  [https://docs.px4.io/master/en/dev_setup/building_px4.html](https://docs.px4.io/master/en/dev_setup/building_px4.html) \
 [https://docs.px4.io/main/en/simulation/](https://docs.px4.io/main/en/simulation/).
 
+
+- If you already have a build of the PX4-Autopilit source code start PX4 using the following commands: <pre>
+export PX4_SIM_HOST_ADDR=x.x.x.x #(the ip of the computer running the Simulink model)
+export PX4_SIM_MODEL=iris
+./bin/px4 -s etc/init.d-posix/rcS
+</pre>
+
 [![Demonstration of the Pixhawk SIL connector example](https://i.ytimg.com/vi/9y0QYBQ-L3I/maxresdefault.jpg)](https://youtu.be/9y0QYBQ-L3I)
 
 <p align="center">Demonstration of the Pixhawk SIL connector example</p>
