@@ -8,8 +8,8 @@ Requirements
 - MATLAB & Simulink (MATLAB R2022a or earlier)
 - MinGW-w64 or MSVC C/C++ Compiler
 - QGroundControl
-- PX4-Autopilot source code (the latest stable release) \
-https://github.com/PX4/PX4-Autopilot
+- PX4-Autopilot source code (the latest stable release v1.14.0) \
+https://github.com/PX4/PX4-Autopilot/releases/tag/v1.14.0
 - Windows Subsystem for Linux (WSL 2) \
 https://learn.microsoft.com/en-us/windows/wsl/about
 
@@ -42,7 +42,7 @@ Use instructions (Simulink model running in Windows, PX4 Autopilot running in WS
 - Build the PX4-Autopilot source code in WSL 2 using the following commands:  <pre>
 git clone --recursive https://github.com/PX4/PX4-Autopilot
 cd PX4-Autopilot
-git checkout v1.13.x #(PX4 version)
+git checkout v1.14.0
 git submodule sync --recursive
 git submodule update --init --recursive
 export PX4_SIM_HOST_ADDR=x.x.x.x #(the ip of the computer running the Simulink model)
@@ -50,9 +50,9 @@ make px4_sitl none_iris</pre>  [https://docs.px4.io/master/en/dev_setup/building
 [https://docs.px4.io/main/en/simulation/](https://docs.px4.io/main/en/simulation/).
 
 
-- If you already have a build of the PX4-Autopilit source code start PX4 using the following commands: <pre>
+- If you already have a build of the PX4-Autopilot source code start PX4 using the following commands: <pre>
 export PX4_SIM_HOST_ADDR=x.x.x.x #(the ip of the computer running the Simulink model)
-export PX4_SIM_MODEL=iris
+export PX4_SIM_MODEL=model (iris for v1.13.3 or none_iris for v1.14.0)
 ./bin/px4 -s etc/init.d-posix/rcS
 </pre>
 
