@@ -2,3 +2,5 @@ includes
 slprj
 *.slxc
 *.asv
+*.autosave
+*_grt_rtw
