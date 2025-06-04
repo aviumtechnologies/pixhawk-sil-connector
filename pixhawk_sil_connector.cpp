@@ -17,6 +17,7 @@
 #define S_FUNCTION_LEVEL 2
 #define S_FUNCTION_NAME pixhawk_sil_connector
 
+
 /*
  * Need to include simstruc.h for the definition of the SimStruct and
  * its associated macro definitions.
@@ -118,12 +119,20 @@ static void mdlStart(SimStruct *S)
     {
 
         static SILConnector sil_connector("0.0.0.0",4560);
-
-        mexPrintf("Waiting for PX4 to connect on TCP port 4560...\n");
+        
+        #ifdef MATLAB_MEX_FILE
+            mexPrintf("Waiting for PX4 to connect on TCP port 4560...\n");
+        #else
+            std::cout<<"Waiting for PX4 to connect on TCP port 4560..."<<std::endl;
+        #endif
 
         sil_connector.open();
 
-        mexPrintf("PX4 connected on TCP port 4560.\n");
+        #ifdef MATLAB_MEX_FILE
+            mexPrintf("PX4 connected on TCP port 4560.\n");
+        #else
+            std::cout<<"PX4 connected on TCP port 4560."<<std::endl;
+        #endif
 
         ssSetPWorkValue(S,0,(void *)&sil_connector);
 
@@ -269,7 +278,11 @@ static void mdlTerminate(SimStruct *S)
 {
     SILConnector *sil_connector = (SILConnector *)ssGetPWorkValue(S,0);
     if(sil_connector){
-        mexPrintf("Closing SILConnector...\n");
+        #ifdef MATLAB_MEX_FILE 
+            mexPrintf("Closing SILConnector...\n");
+        #else
+            std::cout<<"Closing SILConnector..."<<std::endl;
+        #endif
         sil_connector->close();
     }
 }

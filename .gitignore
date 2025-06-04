@@ -4,3 +4,4 @@ slprj
 *.asv
 *.autosave
 *_grt_rtw
+.vscode

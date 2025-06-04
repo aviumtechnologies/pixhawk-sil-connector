@@ -79,6 +79,7 @@ class SILConnector{
         asio::io_service m_io_service;
         asio::ip::tcp::socket m_tcp_socket;
         asio::ip::tcp::acceptor m_acceptor;
+        std::mutex m_mutex;
         uint8_t m_tcp_buffer[1024];
         std::string m_source_address;
         unsigned int m_source_port;
@@ -100,9 +101,11 @@ class SILConnector{
             
             m_acceptor.accept(m_tcp_socket);
 
-            m_last_heartbeat_time = std::chrono::steady_clock::now();
-            m_last_hil_gps_time = std::chrono::steady_clock::now(); 
-            m_last_distance_sensor_time = std::chrono::steady_clock::now(); 
+            auto now = std::chrono::steady_clock::now();
+
+            m_last_heartbeat_time = now;
+            m_last_hil_gps_time = now;
+            m_last_distance_sensor_time = now;
 
         }
 
@@ -115,6 +118,8 @@ class SILConnector{
         }
 
         void read_tcp_socket(){
+
+            std::lock_guard<std::mutex> lock(m_mutex);
             
             auto bytes_available = m_tcp_socket.available();
             
@@ -160,6 +165,8 @@ class SILConnector{
             const Inputs &inputs,
             const GroundTruth &ground_truth
             ){
+
+                std::lock_guard<std::mutex> lock(m_mutex);
                 
                 uint16_t bytes_to_send = 0;
                 mavlink_message_t encoded_msg;
@@ -311,12 +318,12 @@ class SILConnector{
                 float theta = ground_truth.theta;
                 float psi = ground_truth.psi;
 
-                float sphi = std::sin(phi / 2.0);
-                float stheta = std::sin(theta / 2.0);
-                float spsi = std::sin(psi / 2.0);
-                float cphi = std::cos(phi / 2.0);
-                float ctheta = std::cos(theta / 2.0);
-                float cpsi = std::cos(psi / 2.0);
+                float sphi = std::sinf(phi / 2.0f);
+                float stheta = std::sinf(theta / 2.0f);
+                float spsi = std::sinf(psi / 2.0f);
+                float cphi = std::cosf(phi / 2.0f);
+                float ctheta = std::cosf(theta / 2.0f);
+                float cpsi = std::cosf(psi / 2.0f);
 
                 float attitude_quaternion[4];
                 attitude_quaternion[0] = cpsi * ctheta * cphi + spsi * stheta * sphi;

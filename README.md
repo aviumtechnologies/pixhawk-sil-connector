@@ -8,15 +8,16 @@ https://fst.aviumtechnologies.com/pixhawk-sil-connector)
 
 ## Requirements
 
+- Windows (or later)
 - MATLAB & Simulink (MATLAB R2022a or later)
-- MSVC C/C++ (recommended) or MinGW-w64 compiler
+- MSVC (Microsoft Visual C++ 2022 or later)
 - QGroundControl
 - PX4-Autopilot source code (the latest stable release v1.15.0) \
 https://github.com/PX4/PX4-Autopilot/releases/tag/v1.15.0
 - Windows Subsystem for Linux (WSL 2) \
 https://learn.microsoft.com/en-us/windows/wsl/about
 
-Note: Tested extensively on Windows with MSVC C/C++ compiler.
+Note: Tested on Windows 10 with MATLAB R2022a and MSVC compiler.
 
 ## Files
 
@@ -29,7 +30,7 @@ Note: Tested extensively on Windows with MSVC C/C++ compiler.
 [includes.zip](https://github.com/aviumtechnologies/pixhawk-sil-connector/blob/master/includes.zip) (contains the Asio C++ and MAVLink C libraries)
 <div style="height:1px; background-color:rgba(0,0,0,0.12);"></div>
 
-## Build instructions
+## MEX build instructions
 
 -  Install MATLAB-supported compiler  
 https://mathworks.com/support/requirements/supported-compilers.html.
@@ -37,7 +38,7 @@ https://mathworks.com/support/requirements/supported-compilers.html.
 -  Unzip the "includes.zip archive".
 -  Run "make.m" to compile the "pixhawk_sil_connector.cpp" file. If successfull a "pixhawk_sil_connector.mexw64" will be created.
 
-Note: If you are using a compiler other than MSVC (e.g. MinGW64) you might need to add the -lws2_32 flag to the "mex" command in the "make.m" file.
+**Note:** If you are using a compiler other than MSVC (e.g. MinGW64) you might need to add the -lws2_32 flag to the "mex" command in the "make.m" file.
 
 ## Use instructions (Simulink model running in Windows, PX4 Autopilot running in WSL 2)
 
@@ -56,8 +57,8 @@ make px4_sitl_default</pre>  [https://docs.px4.io/master/en/dev_setup/building_p
 
 - If you already have a build of the PX4-Autopilot source code start PX4 using the following commands: <pre>
 cd build/px4_sitl_default
-export PX4_SIM_HOST_ADDR=x.x.x.x #(the ip of the computer running the Simulink model)
-export PX4_SIM_MODEL=model (iris for v1.13.3 or none_iris for v1.14.0 and v1.15.0)
+export PX4_SIM_HOST_ADDR=172.x.x.x (the ip address of WSL 2)
+export PX4_SIM_MODEL=none_iris
 ./bin/px4 -s etc/init.d-posix/rcS
 </pre>
 
@@ -73,3 +74,27 @@ export PX4_SIM_MODEL=model (iris for v1.13.3 or none_iris for v1.14.0 and v1.15.
 
 <p align="center">Pixhawk SIL connector example SITL subsystem</p>
 
+## Simulink Coder build instructions
+
+To build an executable of the Pixhawk SIL connector example, open the Sumlink Coder application and select the Generate Code option. Make sure that in the configuration parameters window under code generation, the system target file is grt.tlc, the language is C++ and the language standard is C++11 (ISO). The generate code only must be checked under the build process parameters. 
+
+After you select the generate code option, the code generation will pause at the "Initialization" phase. This is expected as the model tries to connect to PX4. To continue with the code generation you need to start PX4 using the following command:
+
+<pre>
+cd build/px4_sitl_default
+export PX4_SIM_HOST_ADDR=172.x.x.x (the ip address of WSL 2)
+export PX4_SIM_MODEL=none_iris
+./bin/px4 -s etc/init.d-posix/rcS</pre>
+
+The phase will then change to "Building" and then "Ready". At that point you can stop PX4. 
+
+The code for the Pixhawk SIL connector example will be generated in the `pixhawk_sil_connector_example_grt_rtw` folder. Unforutnately simulation pacing (required for real-time execution) is not supported by Simulink Coder. Therefore a custom version of `rt_main.cpp` file is required to achive real-time execution of the model.
+
+- Edit the `pixhawk_sil_connector_example.mk` in the `pixhawk_sil_connector_example_grt_rtw` folder by replacing `$(MATLAB_ROOT)\rtw\c\src\common\rt_main.cpp` with `$(START_DIR)\pixhawk_sil_connector_example_grt_rtw\rt_main.cpp`.
+- Copy the `rt_main.cpp` file from the `$(MATLAB_ROOT)\rtw\c\src\common\` folder to the `$(START_DIR)\pixhawk_sil_connector_example_grt_rtw\` folder.
+- Edit the `int_T main(int_T argc, const char *argv[])` function in the `rt_main.cpp` file to achieve real-time execution. You can use the standard C++ library `<thread>` and `<chrono>`. 
+
+    **Note:** It is beyond the scope of this instructions explain how this is done.
+- Build the generated code with the following command `nmake -f pixhawk_sil_connector_example.mk all`
+
+After succesfull build a `pixhawk_sil_connector_example.exe` file will be created.
