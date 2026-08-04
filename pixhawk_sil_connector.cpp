@@ -3,7 +3,7 @@
  *
  *  Simulink C++ S-function for software-in-the-loop (SIL) simulation with Pixhawk.
  *
- *  Copyright (c) 2023 Kiril Boychev
+ *  Copyright (c) 2026 Kiril Boychev
  */
 
 #include <algorithm>
@@ -113,34 +113,32 @@ static void mdlInitializeSampleTimes(SimStruct *S)
  */
 static void mdlStart(SimStruct *S)
 {
-    static std::string eStatus;
+    SILConnectorInstance* inst = new SILConnectorInstance();
+
+    ssSetPWorkValue(S,0,(void *)inst);
 
     try
     {
+        inst->connector = new SILConnector("0.0.0.0",4560);
 
-        static SILConnector sil_connector("0.0.0.0",4560);
-        
         #ifdef MATLAB_MEX_FILE
             mexPrintf("Waiting for PX4 to connect on TCP port 4560...\n");
         #else
             std::cout<<"Waiting for PX4 to connect on TCP port 4560..."<<std::endl;
         #endif
 
-        sil_connector.open();
+        inst->connector->open();
 
         #ifdef MATLAB_MEX_FILE
             mexPrintf("PX4 connected on TCP port 4560.\n");
         #else
             std::cout<<"PX4 connected on TCP port 4560."<<std::endl;
         #endif
-
-        ssSetPWorkValue(S,0,(void *)&sil_connector);
-
     }
     catch (const std::exception &e)
     {
-        eStatus = std::string(e.what());
-        ssSetErrorStatus(S, eStatus.c_str());
+        inst->error = e.what();
+        ssSetErrorStatus(S, inst->error.c_str());
     }
 }
 #endif /*  MDL_START */
@@ -155,13 +153,10 @@ static void mdlOutputs(SimStruct *S, int_T tid)
 
     if (ssIsSampleHit(S, 0, tid)){
 
-        static std::string eStatus;
+        SILConnectorInstance *inst = (SILConnectorInstance *)ssGetPWorkValue(S,0);
 
         try
-        {
-            
-            SILConnector *sil_connector = (SILConnector *)ssGetPWorkValue(S,0);
-            
+        {            
             InputRealPtrsType time = ssGetInputPortRealSignalPtrs(S, 0);
             InputRealPtrsType A_measured = ssGetInputPortRealSignalPtrs(S, 1);
             InputRealPtrsType omega_b_measured = ssGetInputPortRealSignalPtrs(S, 2);
@@ -195,6 +190,7 @@ static void mdlOutputs(SimStruct *S, int_T tid)
             air_data.temperature = (float)(*T_measured[0]);
 
             SensorGPS gps;
+
             gps.fix_type = (uint8_t)(*xyz_measured[0]);
             gps.lat = (int32_t)(*xyz_measured[1]);
             gps.lon = (int32_t)(*xyz_measured[2]);
@@ -213,6 +209,8 @@ static void mdlOutputs(SimStruct *S, int_T tid)
             altimeter.current_distance = (uint16_t)(*h_measured[0]);
 
             Inputs inputs;
+
+            inputs.chancount=12;
             for(unsigned int i=0;i<12;i++){
                 inputs.channels[i]=(uint16_t)(*rc_channels[i]);
             }
@@ -238,7 +236,7 @@ static void mdlOutputs(SimStruct *S, int_T tid)
             gt.yacc = (int16_t)(*ground_truth[15]);
             gt.zacc = (int16_t)(*ground_truth[16]);
 
-            sil_connector->send_sensors(
+            inst->connector->send_sensors(
                                 time_usec,
                                 imu,
                                 air_data,
@@ -249,9 +247,9 @@ static void mdlOutputs(SimStruct *S, int_T tid)
                                 );
 
 
-            sil_connector->read_tcp_socket();
+            inst->connector->read_tcp_socket();
 
-            auto hil_actuator_controls = sil_connector->get_hil_actuator_controls();
+            auto hil_actuator_controls = inst->connector->get_hil_actuator_controls();
 
             real_T *pwm = ssGetOutputPortRealSignal(S, 0);
 
@@ -262,8 +260,8 @@ static void mdlOutputs(SimStruct *S, int_T tid)
         }
         catch (const std::exception &e)
         {
-            eStatus = std::string(e.what());
-            ssSetErrorStatus(S, eStatus.c_str());
+            inst->error = e.what();
+            ssSetErrorStatus(S,inst->error.c_str());
         }
     }
 }
@@ -276,14 +274,19 @@ static void mdlOutputs(SimStruct *S, int_T tid)
  */
 static void mdlTerminate(SimStruct *S)
 {
-    SILConnector *sil_connector = (SILConnector *)ssGetPWorkValue(S,0);
-    if(sil_connector){
+    SILConnectorInstance *inst = (SILConnectorInstance *)ssGetPWorkValue(S,0);
+    if(inst){
         #ifdef MATLAB_MEX_FILE 
             mexPrintf("Closing SILConnector...\n");
         #else
             std::cout<<"Closing SILConnector..."<<std::endl;
         #endif
-        sil_connector->close();
+        if(inst->connector){
+            inst->connector->close();
+            delete inst->connector;
+        }
+        delete inst;
+        ssSetPWorkValue(S,0,NULL);
     }
 }
 /*======================================================*

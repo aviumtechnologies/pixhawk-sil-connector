@@ -3,7 +3,7 @@
  *
  *  A C++ header file defining the Sensor and SILConnector classes.
  *
- *  Copyright (c) 2023 Kiril Boychev
+ *  Copyright (c) 2026 Kiril Boychev
  */
 #ifndef _SILConnector_h
 #define _SILConnector_h
@@ -49,6 +49,7 @@ struct SensorAltimeter{
 };
 
 struct Inputs{
+    uint8_t chancount;
     std::array<uint16_t,12> channels;
     uint8_t rssi;
 };
@@ -84,9 +85,9 @@ class SILConnector{
         std::string m_source_address;
         unsigned int m_source_port;
         std::array<float,16> m_hil_actuator_controls;
-        std::chrono::time_point<std::chrono::steady_clock> m_last_heartbeat_time;
-        std::chrono::time_point<std::chrono::steady_clock> m_last_hil_gps_time;
-        std::chrono::time_point<std::chrono::steady_clock> m_last_distance_sensor_time;
+        uint64_t m_last_heartbeat_time_usec;
+        uint64_t m_last_hil_gps_time_usec;
+        uint64_t m_last_distance_sensor_time_usec;
 
     public:
         SILConnector(const std::string &source_address,const unsigned int & source_port)
@@ -94,18 +95,17 @@ class SILConnector{
             m_tcp_socket(m_io_service),
             m_source_address(source_address),
             m_source_port(source_port),
-            m_acceptor(m_io_service,asio::ip::tcp::endpoint(asio::ip::address::from_string("0.0.0.0"), 4560)){
+            m_acceptor(m_io_service,asio::ip::tcp::endpoint(asio::ip::address::from_string("0.0.0.0"), 4560)),
+            m_hil_actuator_controls{0.0f}{
         }
 
         void open(){
             
+            m_last_heartbeat_time_usec = 0;
+            m_last_hil_gps_time_usec = 0; 
+            m_last_distance_sensor_time_usec = 0; 
+
             m_acceptor.accept(m_tcp_socket);
-
-            auto now = std::chrono::steady_clock::now();
-
-            m_last_heartbeat_time = now;
-            m_last_hil_gps_time = now;
-            m_last_distance_sensor_time = now;
 
         }
 
@@ -171,11 +171,7 @@ class SILConnector{
                 uint16_t bytes_to_send = 0;
                 mavlink_message_t encoded_msg;
 
-                auto now = std::chrono::steady_clock::now();
-                
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now-m_last_heartbeat_time);
-                
-                if(elapsed.count()>1000){ //1Hz
+                if(m_last_heartbeat_time_usec == 0 || (time_usec - m_last_heartbeat_time_usec) >= 1000000ULL){
 
                     mavlink_heartbeat_t heartbeat_msg;
                     heartbeat_msg.autopilot = (uint8_t)MAV_AUTOPILOT_GENERIC;
@@ -188,7 +184,7 @@ class SILConnector{
 
                     bytes_to_send = mavlink_msg_to_send_buffer(&m_tcp_buffer[bytes_to_send],&encoded_msg);
 
-                    m_last_heartbeat_time=now;
+                    m_last_heartbeat_time_usec = time_usec;
                 }
 
                 mavlink_hil_sensor_t hil_sensor_msg;
@@ -212,11 +208,7 @@ class SILConnector{
 
                 bytes_to_send += mavlink_msg_to_send_buffer(&m_tcp_buffer[bytes_to_send],&encoded_msg);
 
-                now = std::chrono::steady_clock::now();
-                
-                elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now-m_last_hil_gps_time);
-                
-                if(elapsed.count()>200){ //5Hz
+                if(m_last_hil_gps_time_usec == 0 || (time_usec - m_last_hil_gps_time_usec) >= 200000ULL){
 
                     mavlink_hil_gps_t hil_gps_msg;
                     hil_gps_msg.time_usec = time_usec;
@@ -239,15 +231,11 @@ class SILConnector{
 
                     bytes_to_send += mavlink_msg_to_send_buffer(&m_tcp_buffer[bytes_to_send],&encoded_msg);
                     
-                    m_last_hil_gps_time = now;
+                    m_last_hil_gps_time_usec = time_usec;
 
                 }
 
-                now = std::chrono::steady_clock::now();
-                
-                elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now-m_last_distance_sensor_time);
-
-                if(elapsed.count()>10){ //50Hz
+                if(m_last_distance_sensor_time_usec == 0 || (time_usec - m_last_distance_sensor_time_usec) >= 10000ULL){
 
                     uint16_t min_distance = 2;
                     uint16_t max_distance = 5000;
@@ -288,31 +276,31 @@ class SILConnector{
 
                     bytes_to_send += mavlink_msg_to_send_buffer(&m_tcp_buffer[bytes_to_send], &encoded_msg);
 
-                    m_last_distance_sensor_time = now;
+                    m_last_distance_sensor_time_usec = time_usec;
 
                 }
                 
-                mavlink_hil_rc_inputs_raw_t hil_rc_inputs_raw;
+                mavlink_rc_channels_t rc_channels;
 
-                hil_rc_inputs_raw.time_usec = time_usec;
-                hil_rc_inputs_raw.chan1_raw = inputs.channels[0];
-                hil_rc_inputs_raw.chan2_raw = inputs.channels[1];
-                hil_rc_inputs_raw.chan3_raw = inputs.channels[2];
-                hil_rc_inputs_raw.chan4_raw = inputs.channels[3];
-                hil_rc_inputs_raw.chan5_raw = inputs.channels[4];
-                hil_rc_inputs_raw.chan6_raw = inputs.channels[5];
-                hil_rc_inputs_raw.chan7_raw = inputs.channels[6];
-                hil_rc_inputs_raw.chan8_raw = inputs.channels[7];
-                hil_rc_inputs_raw.chan9_raw = inputs.channels[8];
-                hil_rc_inputs_raw.chan10_raw = inputs.channels[9];
-                hil_rc_inputs_raw.chan11_raw = inputs.channels[10];
-                hil_rc_inputs_raw.chan12_raw = inputs.channels[11];
-                hil_rc_inputs_raw.rssi = inputs.rssi;
+                rc_channels.time_boot_ms = (uint32_t)(time_usec /(1e3));
+                rc_channels.chancount = inputs.chancount;
+                rc_channels.chan1_raw = inputs.channels[0];
+                rc_channels.chan2_raw = inputs.channels[1];
+                rc_channels.chan3_raw = inputs.channels[2];
+                rc_channels.chan4_raw = inputs.channels[3];
+                rc_channels.chan5_raw = inputs.channels[4];
+                rc_channels.chan6_raw = inputs.channels[5];
+                rc_channels.chan7_raw = inputs.channels[6];
+                rc_channels.chan8_raw = inputs.channels[7];
+                rc_channels.chan9_raw = inputs.channels[8];
+                rc_channels.chan10_raw = inputs.channels[9];
+                rc_channels.chan11_raw = inputs.channels[10];
+                rc_channels.chan12_raw = inputs.channels[11];
+                rc_channels.rssi = inputs.rssi;
 
-                mavlink_msg_hil_rc_inputs_raw_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &hil_rc_inputs_raw);
+                mavlink_msg_rc_channels_encode_chan(1, 200, MAVLINK_COMM_0, &encoded_msg, &rc_channels);
 
                 bytes_to_send += mavlink_msg_to_send_buffer(&m_tcp_buffer[bytes_to_send], &encoded_msg);
-
 
                 float phi = ground_truth.phi;
                 float theta = ground_truth.theta;
@@ -357,6 +345,11 @@ class SILConnector{
 
                 m_tcp_socket.send(asio::buffer(m_tcp_buffer,bytes_to_send));
             }
+};
+
+struct SILConnectorInstance{
+	SILConnector *connector=nullptr;
+	std::string error;
 };
 
 #endif
